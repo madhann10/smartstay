@@ -5,12 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
 import PasswordField from '../components/PasswordField';
 
-const errorText = (error, fallback) => error.response?.data?.message || fallback;
+const errorText = (err, fallback) => err?.response?.data?.message || fallback;
 
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState('');
@@ -22,14 +23,16 @@ export default function Auth() {
 
   const completeLogin = (data) => {
     login(data);
-    navigate(location.state?.from?.pathname || (data.user.role === 'admin' ? '/admin' : '/dashboard'));
+    const redirect = location.state?.from?.pathname;
+    navigate(redirect || (data.user?.role === 'admin' ? '/admin' : '/dashboard'));
   };
 
+  // Show success message after registration redirect
   useEffect(() => {
     if (location.state?.message) setMessage(location.state.message);
   }, [location.state]);
 
-  // Google Sign-In script loader
+  // Google Sign-In SDK loader
   useEffect(() => {
     if (!googleClientId) return;
     const handleCredentialResponse = async (response) => {
@@ -46,7 +49,7 @@ export default function Auth() {
       }
     };
 
-    const scriptId = 'google-jssdk';
+    const scriptId = 'google-gsi-sdk';
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
       script.id = scriptId;
@@ -81,20 +84,23 @@ export default function Auth() {
     setMessage('');
     setLoading('email');
     try {
-      const data = await authApi.login({ email: email.trim().toLowerCase(), password });
+      const data = await authApi.login({
+        email: email.trim().toLowerCase(),
+        password,
+      });
       completeLogin(data);
     } catch (err) {
-      setError(errorText(err, 'Login failed. Please check your credentials and try again.'));
+      setError(errorText(err, 'Invalid email or password.'));
     } finally {
       setLoading('');
     }
   };
 
   const handleFallbackGoogle = async () => {
+    setError('');
+    setMessage('');
+    setLoading('google');
     try {
-      setError('');
-      setMessage('');
-      setLoading('google');
       const data = await authApi.loginWithGoogle(null, true);
       completeLogin(data);
     } catch (err) {
@@ -106,39 +112,57 @@ export default function Auth() {
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
+      {/* Left branding panel — desktop only */}
       <section className="hidden bg-slate-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <Link to="/" className="flex items-center gap-2 text-xl font-bold">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500"><Building2 size={20}/></span>SmartStay
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500">
+            <Building2 size={20} />
+          </span>
+          SmartStay
         </Link>
         <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-indigo-300">Hotel booking, reimagined</p>
-          <h1 className="mt-4 max-w-lg text-5xl font-bold leading-tight">A better way to plan your next stay.</h1>
-          <p className="mt-5 max-w-md leading-7 text-slate-300">Search quality stays, understand dynamic room rates, and keep every booking in one place.</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-indigo-300">
+            Hotel booking, reimagined
+          </p>
+          <h1 className="mt-4 max-w-lg text-5xl font-bold leading-tight">
+            A better way to plan your next stay.
+          </h1>
+          <p className="mt-5 max-w-md leading-7 text-slate-300">
+            Search quality stays, understand dynamic room rates, and keep every booking in one place.
+          </p>
         </div>
         <p className="text-sm text-slate-400">SmartStay · 2026</p>
       </section>
 
+      {/* Right login panel */}
       <section className="grid place-items-center bg-slate-50 p-5">
         <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-sm sm:p-9">
+          {/* Mobile logo */}
           <Link to="/" className="mb-8 flex items-center gap-2 text-lg font-bold text-slate-900 lg:hidden">
-            <Building2 size={22}/>SmartStay
+            <Building2 size={22} />SmartStay
           </Link>
+
           <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Welcome back</p>
           <h2 className="mt-2 text-3xl font-bold">Sign in to SmartStay.</h2>
 
-          {message && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
-          {error && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+          {message && (
+            <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>
+          )}
+          {error && (
+            <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>
+          )}
 
-          {/* Google Sign-In Button */}
+          {/* Google Sign-In */}
           <div className="mt-6">
-            <div id="google-btn-container" className="flex justify-center min-h-[44px]"></div>
+            <div id="google-btn-container" className="flex min-h-[44px] justify-center" />
             {(!googleClientId || !googleReady) && (
               <button
                 type="button"
                 onClick={handleFallbackGoogle}
-                className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                disabled={loading === 'google'}
+                className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
@@ -150,25 +174,49 @@ export default function Auth() {
           </div>
 
           <div className="relative my-6 flex items-center justify-center">
-            <div className="w-full border-t border-slate-200"></div>
-            <span className="absolute bg-white px-3 text-xs font-semibold uppercase text-slate-400">Or email & password</span>
+            <div className="w-full border-t border-slate-200" />
+            <span className="absolute bg-white px-3 text-xs font-semibold uppercase text-slate-400">
+              Or email &amp; password
+            </span>
           </div>
 
+          {/* Email + Password form */}
           <form onSubmit={submitEmail} className="space-y-4">
-            <Label icon={<Mail size={16}/>} label="Email Address">
-              <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"/>
-            </Label>
-            <PasswordField icon={<KeyRound size={16}/>} label="Password" value={password} onChange={setPassword} placeholder="Enter your password"/>
+            <FieldLabel icon={<Mail size={16} />} label="Email Address">
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </FieldLabel>
+            <PasswordField
+              icon={<KeyRound size={16} />}
+              label="Password"
+              value={password}
+              onChange={setPassword}
+              placeholder="Enter your password"
+            />
             <div className="text-right">
-              <Link to="/forgot-password" className="text-sm font-semibold text-indigo-600">Forgot password?</Link>
+              <Link to="/forgot-password" className="text-sm font-semibold text-indigo-600">
+                Forgot password?
+              </Link>
             </div>
-            <button disabled={!!loading} className="w-full rounded-lg bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-60">
-              {loading === 'email' ? 'Logging in…' : 'Sign In'}
+            <button
+              type="submit"
+              disabled={!!loading}
+              className="w-full rounded-lg bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {loading === 'email' ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-500">
-            New to SmartStay? <Link to="/register" className="font-semibold text-indigo-600">Create an account</Link>
+            New to SmartStay?{' '}
+            <Link to="/register" className="font-semibold text-indigo-600">
+              Create an account
+            </Link>
           </p>
         </div>
       </section>
@@ -176,11 +224,18 @@ export default function Auth() {
   );
 }
 
-function Label({ icon, label, children }) {
+function FieldLabel({ icon, label, children }) {
   return (
     <label className="block text-sm font-medium text-slate-700">
-      <span className="flex items-center gap-2">{icon}{label}</span>
-      {children && <span className="mt-2 block [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-slate-200 [&_input]:px-3 [&_input]:py-3 [&_input]:outline-indigo-500">{children}</span>}
+      <span className="flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+      {children && (
+        <span className="mt-2 block [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-slate-200 [&_input]:px-3 [&_input]:py-3 [&_input]:outline-indigo-500">
+          {children}
+        </span>
+      )}
     </label>
   );
 }

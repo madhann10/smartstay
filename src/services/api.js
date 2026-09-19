@@ -42,8 +42,6 @@ export const authApi = {
   register: (payload) => client.post('/auth/register', payload).then((r) => r.data),
   login: (payload) => client.post('/auth/login', payload).then((r) => r.data),
   loginWithGoogle: (credential, isDevMock) => client.post('/auth/google', { credential, isDevMock }).then((r) => r.data),
-  sendOtp: (phone, isRegistration = false, email = null) => client.post('/auth/send-otp', { phone, isRegistration, email }).then((r) => r.data),
-  verifyOtp: (phone, otp) => client.post('/auth/verify-otp', { phone, otp }).then((r) => r.data),
   forgotPassword: (email) => client.post('/auth/forgot-password', { email }).then((r) => r.data),
   resetPassword: (token, newPassword) => client.post('/auth/reset-password', { token, newPassword }).then((r) => r.data),
   changePassword: (currentPassword, newPassword) => client.post('/auth/change-password', { currentPassword, newPassword }).then((r) => r.data),
