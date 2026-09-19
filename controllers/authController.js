@@ -21,38 +21,35 @@ const validEmail = (email) => /^\S+@\S+\.\S+$/.test(String(email || '').trim());
 export const register = async (req, res) => {
   try {
     const { name, email, password, confirmPassword, phone } = req.body;
-    if (!name || !validEmail(email) || !password || !phone) return res.status(400).json({ success: false, message: 'Please enter a valid mobile number.' });
+    if (!name || !validEmail(email) || !password) return res.status(400).json({ success: false, message: 'Please enter your name, a valid email, and a password.' });
     if (password.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
     if (confirmPassword !== undefined && password !== confirmPassword) return res.status(400).json({ success: false, message: 'Passwords do not match.' });
-    const normalizedPhone = normalizePhone(phone);
-    if (!normalizedPhone) return res.status(400).json({ success: false, message: 'Please enter a valid mobile number.' });
 
-    const emailExists = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase().trim();
+    const emailExists = await User.findOne({ email: normalizedEmail });
     if (emailExists) return res.status(409).json({ success: false, message: 'An account already uses this email address.' });
 
-    const phoneExists = await User.findOne({ phone: normalizedPhone });
-    if (phoneExists) return res.status(409).json({ success: false, message: 'This mobile number is already registered.' });
-
-    // Verify that OTP challenge was successfully verified within last 15 mins
-    const challenge = await OtpChallenge.findOne({ phone: normalizedPhone, usedAt: { $gt: new Date(Date.now() - 15 * 60 * 1000) } });
-    if (!challenge) {
-      return res.status(400).json({ success: false, message: 'Mobile phone verification is required. Please verify your OTP first.' });
+    let normalizedPhone;
+    if (phone) {
+      normalizedPhone = normalizePhone(phone);
+      if (normalizedPhone) {
+        const phoneExists = await User.findOne({ phone: normalizedPhone });
+        if (phoneExists) return res.status(409).json({ success: false, message: 'This mobile number is already registered.' });
+      }
     }
 
     const user = await User.create({
-      name,
-      email: email.toLowerCase(),
-      phone: normalizedPhone,
+      name: name.trim(),
+      email: normalizedEmail,
+      ...(normalizedPhone ? { phone: normalizedPhone } : {}),
       passwordHash: await bcrypt.hash(password, 12),
-      phoneVerified: true,
-      phoneVerifiedAt: new Date(),
       role: 'customer'
     });
 
     const sessionId = crypto.randomUUID();
-    await record(req, { userId: user._id, name: user.name, email: user.email, phone: user.phone, loginMethod: 'EMAIL', status: 'SUCCESS', sessionId });
+    await record(req, { userId: user._id, name: user.name, email: user.email, phone: user.phone || '', loginMethod: 'EMAIL', status: 'SUCCESS', sessionId });
 
-    return res.status(201).json({ success: true, message: 'Account created successfully.', token: issueToken(user, sessionId), user: publicUser(user) });
+    return res.status(201).json({ success: true, message: 'Account created successfully. Please sign in.', token: issueToken(user, sessionId), user: publicUser(user) });
   } catch (error) { return res.status(500).json({ success: false, message: 'Registration failed. Please try again.' }); }
 };
 
@@ -105,10 +102,10 @@ export const sendOtp = async (req, res) => {
       console.log(`\n[OTP] Mobile: ${phone}\n[OTP] Code: ${otp}\n[OTP] Expires in: ${otpExpirySeconds} seconds\n`);
     }
 
-    try { await sendSmsOtp(phone, otp); } catch (error) { await OtpChallenge.deleteOne({ _id: challenge._id }); return res.status(503).json({ success: false, message: 'Unable to send OTP. Please try again later.' }); }
+    try { await sendSmsOtp(phone, otp); } catch (error) { await OtpChallenge.deleteOne({ _id: challenge._id }); return res.status(503).json({ success: false, message: error.message || 'Unable to send OTP. Please try again later.' }); }
 
     return res.json({ success: true, message: 'OTP sent to your mobile number.', expiresIn: otpExpirySeconds });
-  } catch { return res.status(500).json({ success: false, message: 'Unable to send OTP. Please try again later.' }); }
+  } catch (err) { return res.status(500).json({ success: false, message: err.message || 'Unable to send OTP. Please try again later.' }); }
 };
 
 export const verifyOtp = async (req, res) => {
