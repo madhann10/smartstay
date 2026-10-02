@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import LoginActivity from '../models/LoginActivity.js';
 import Hotel from '../models/Hotel.js';
 import Booking from '../models/Booking.js';
@@ -137,6 +138,59 @@ export const createAdminHotel = async (req, res) => {
     return res.status(201).json({ success: true, hotel });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message || 'Unable to create hotel.' });
+  }
+};
+
+export const getAdminHotelById = async (req, res) => {
+  try {
+    const hotel = await Hotel.findById(req.params.id);
+    if (!hotel) return res.status(404).json({ success: false, message: 'Hotel not found.' });
+    return res.json({ success: true, hotel });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to fetch hotel.' });
+  }
+};
+
+export const updateAdminHotel = async (req, res) => {
+  try {
+    const { name, city, state, address, propertyType, rating, description, amenities } = req.body;
+    const hotel = await Hotel.findById(req.params.id);
+    if (!hotel) return res.status(404).json({ success: false, message: 'Hotel not found.' });
+
+    if (name) hotel.name = name.trim();
+    if (city) {
+      hotel.location = hotel.location || {};
+      hotel.location.city = city.trim();
+    }
+    if (state !== undefined) {
+      hotel.location = hotel.location || {};
+      hotel.location.state = state.trim();
+    }
+    if (address) {
+      hotel.location = hotel.location || {};
+      hotel.location.address = address.trim();
+    }
+    if (propertyType) hotel.propertyType = propertyType;
+    if (rating !== undefined) hotel.rating = Number(rating);
+    if (description !== undefined) hotel.description = description.trim();
+    if (amenities !== undefined) {
+      hotel.amenities = Array.isArray(amenities) ? amenities : String(amenities).split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    await hotel.save();
+    return res.json({ success: true, hotel, message: 'Hotel updated successfully.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to update hotel.' });
+  }
+};
+
+export const deleteAdminHotel = async (req, res) => {
+  try {
+    const hotel = await Hotel.findByIdAndDelete(req.params.id);
+    if (!hotel) return res.status(404).json({ success: false, message: 'Hotel not found.' });
+    return res.json({ success: true, message: 'Hotel deleted successfully.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to delete hotel.' });
   }
 };
 
@@ -295,6 +349,57 @@ export const createAdminRoom = async (req, res) => {
   }
 };
 
+export const updateAdminRoom = async (req, res) => {
+  try {
+    const { hotelId, roomId } = req.params;
+    const { roomNumber, type, capacity, basePrice, amenities, isAvailable } = req.body;
+
+    const hotel = await Hotel.findById(hotelId);
+    if (!hotel) return res.status(404).json({ success: false, message: 'Hotel not found.' });
+
+    const room = hotel.rooms.id(roomId) || hotel.rooms.find((r) => String(r._id) === roomId);
+    if (!room) return res.status(404).json({ success: false, message: 'Room not found.' });
+
+    if (roomNumber !== undefined && String(roomNumber).trim()) {
+      const duplicate = hotel.rooms.find((r) => String(r._id) !== String(room._id) && r.roomNumber === String(roomNumber).trim());
+      if (duplicate) {
+        return res.status(409).json({ success: false, message: `Room number "${roomNumber}" already exists in this hotel.` });
+      }
+      room.roomNumber = String(roomNumber).trim();
+    }
+
+    if (type !== undefined) room.type = type;
+    if (capacity !== undefined) room.capacity = Number(capacity);
+    if (basePrice !== undefined) room.basePrice = Number(basePrice);
+    if (isAvailable !== undefined) room.isAvailable = Boolean(isAvailable);
+    if (amenities !== undefined) {
+      room.amenities = Array.isArray(amenities) ? amenities : String(amenities).split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    await hotel.save();
+    return res.json({ success: true, room, message: 'Room updated successfully.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to update room.' });
+  }
+};
+
+export const deleteAdminRoom = async (req, res) => {
+  try {
+    const { hotelId, roomId } = req.params;
+    const hotel = await Hotel.findById(hotelId);
+    if (!hotel) return res.status(404).json({ success: false, message: 'Hotel not found.' });
+
+    const room = hotel.rooms.id(roomId) || hotel.rooms.find((r) => String(r._id) === roomId);
+    if (!room) return res.status(404).json({ success: false, message: 'Room not found.' });
+
+    hotel.rooms.pull(room._id);
+    await hotel.save();
+    return res.json({ success: true, message: 'Room deleted successfully.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to delete room.' });
+  }
+};
+
 // =============================================================================
 // BOOKINGS ADMIN
 // =============================================================================
@@ -337,15 +442,71 @@ export const getAdminBookings = async (req, res) => {
   }
 };
 
+export const getAdminBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isObjId = mongoose.Types.ObjectId.isValid(id);
+    const booking = await Booking.findOne({
+      $or: [{ bookingId: id }, ...(isObjId ? [{ _id: id }] : [])]
+    }).lean();
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+    return res.json({ success: true, booking });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to fetch booking.' });
+  }
+};
+
+export const updateAdminBookingStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ success: false, message: 'Status is required.' });
+
+    const validStatuses = ['Pending', 'Confirmed', 'Cancelled', 'Checked In', 'Checked Out'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: `Invalid status "${status}". Choose from: ${validStatuses.join(', ')}` });
+    }
+
+    const isObjId = mongoose.Types.ObjectId.isValid(id);
+    const booking = await Booking.findOne({
+      $or: [{ bookingId: id }, ...(isObjId ? [{ _id: id }] : [])]
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    booking.bookingStatus = status;
+    await booking.save();
+    return res.json({ success: true, booking, message: `Booking status updated to ${status}.` });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to update booking status.' });
+  }
+};
+
+export const cancelAdminBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isObjId = mongoose.Types.ObjectId.isValid(id);
+    const booking = await Booking.findOne({
+      $or: [{ bookingId: id }, ...(isObjId ? [{ _id: id }] : [])]
+    });
+    if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    booking.bookingStatus = 'Cancelled';
+    await booking.save();
+    return res.json({ success: true, message: 'Booking cancelled successfully.', booking });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to cancel booking.' });
+  }
+};
+
 // =============================================================================
 // PRICING ADMIN
 // =============================================================================
 
 export const getAdminPricing = async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, search = '' } = req.query;
     const hotels = await Hotel.find().lean();
-    const pricingList = [];
+    let pricingList = [];
 
     hotels.forEach((h) => {
       if (h.rooms && h.rooms.length > 0) {
@@ -354,17 +515,30 @@ export const getAdminPricing = async (req, res) => {
           const dynamic = Math.round(base * 1.12);
           pricingList.push({
             hotelId: h._id,
+            roomId: r._id,
+            roomNumber: r.roomNumber,
             hotel: h.name,
             room: r.type,
             base,
             demand: r.basePrice > 4000 ? 'High' : (r.basePrice > 2000 ? 'Medium' : 'Low'),
             occupancy: r.isAvailable ? 65 : 90,
             dynamic,
-            status: 'Active',
+            status: r.isAvailable !== false ? 'Active' : 'Unavailable',
           });
         });
       }
     });
+
+    if (search.trim()) {
+      const lower = search.trim().toLowerCase();
+      pricingList = pricingList.filter(
+        (p) =>
+          p.hotel.toLowerCase().includes(lower) ||
+          p.room.toLowerCase().includes(lower) ||
+          String(p.roomNumber || '').toLowerCase().includes(lower) ||
+          p.demand.toLowerCase().includes(lower)
+      );
+    }
 
     const pageNum  = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
@@ -383,6 +557,141 @@ export const getAdminPricing = async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Unable to load pricing data.' });
+  }
+};
+
+export const updateAdminRoomPrice = async (req, res) => {
+  try {
+    const { hotelId, roomId } = req.params;
+    const { basePrice } = req.body;
+    if (basePrice == null || isNaN(basePrice) || Number(basePrice) < 0) {
+      return res.status(400).json({ success: false, message: 'Valid non-negative base price is required.' });
+    }
+
+    const hotel = await Hotel.findById(hotelId);
+    if (!hotel) return res.status(404).json({ success: false, message: 'Hotel not found.' });
+
+    const room = hotel.rooms.id(roomId) || hotel.rooms.find((r) => String(r._id) === roomId);
+    if (!room) return res.status(404).json({ success: false, message: 'Room not found.' });
+
+    room.basePrice = Number(basePrice);
+    await hotel.save();
+
+    const dynamicPrice = Math.round(room.basePrice * 1.12);
+    return res.json({
+      success: true,
+      message: 'Room price updated successfully.',
+      room: {
+        _id: room._id,
+        hotelId: hotel._id,
+        hotelName: hotel.name,
+        roomNumber: room.roomNumber,
+        basePrice: room.basePrice,
+        dynamicPrice,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || 'Unable to update room price.' });
+  }
+};
+
+// =============================================================================
+// REAL DATABASE ANALYTICS
+// =============================================================================
+
+export const getAdminAnalytics = async (req, res) => {
+  try {
+    const totalBookings = await Booking.countDocuments();
+    const paidBookings = await Booking.find({ paymentStatus: 'Paid', bookingStatus: { $ne: 'Cancelled' } }).lean();
+    const totalRevenue = paidBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+    const avgBookingValue = paidBookings.length ? Math.round(totalRevenue / paidBookings.length) : 0;
+
+    const hotels = await Hotel.find().lean();
+    let totalRooms = 0;
+    let availableRooms = 0;
+    const roomTypeCounts = { Single: 0, Double: 0, Suite: 0, Deluxe: 0 };
+
+    hotels.forEach((h) => {
+      if (h.rooms && h.rooms.length) {
+        totalRooms += h.rooms.length;
+        h.rooms.forEach((r) => {
+          if (r.isAvailable !== false) availableRooms++;
+          if (roomTypeCounts[r.type] !== undefined) {
+            roomTypeCounts[r.type]++;
+          }
+        });
+      }
+    });
+
+    const occupiedRooms = totalRooms - availableRooms;
+    const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
+
+    const statusCounts = await Booking.aggregate([
+      { $group: { _id: '$bookingStatus', count: { $sum: 1 } } },
+    ]);
+
+    const bookingTrend = await Booking.aggregate([
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          bookings: { $sum: 1 },
+          revenue: { $sum: '$totalAmount' },
+        },
+      },
+      { $sort: { _id: 1 } },
+      { $limit: 14 },
+    ]);
+
+    const formattedTrend = bookingTrend.map((t) => ({
+      date: t._id,
+      name: new Date(t._id).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+      bookings: t.bookings,
+      revenue: t.revenue,
+    }));
+
+    const topHotels = await Booking.aggregate([
+      {
+        $group: {
+          _id: '$hotelSnapshot.name',
+          bookings: { $sum: 1 },
+          revenue: { $sum: '$totalAmount' },
+        },
+      },
+      { $sort: { bookings: -1 } },
+      { $limit: 5 },
+    ]);
+
+    return res.json({
+      success: true,
+      analytics: {
+        totalBookings,
+        totalRevenue,
+        avgBookingValue,
+        totalHotels: hotels.length,
+        totalRooms,
+        availableRooms,
+        occupiedRooms,
+        occupancyRate,
+        statusCounts: statusCounts.reduce((acc, s) => ({ ...acc, [s._id || 'Unknown']: s.count }), {}),
+        bookingTrend: formattedTrend,
+        topHotels: topHotels.map((h) => ({ name: h._id || 'Hotel Stay', bookings: h.bookings, revenue: h.revenue })),
+        roomTypes: Object.entries(roomTypeCounts).map(([type, count]) => ({ type, count })),
+      },
+    });
+  } catch (err) {
+    console.error('getAdminAnalytics error:', err);
+    return res.status(500).json({ success: false, message: 'Unable to calculate analytics data.' });
+  }
+};
+
+export const getAdminProfile = async (req, res) => {
+  try {
+    const rawId = req.user?.id || req.user?._id;
+    const user = await User.findById(rawId).select('-passwordHash -passwordResetHash');
+    if (!user) return res.status(404).json({ success: false, message: 'Admin user not found.' });
+    return res.json({ success: true, admin: user });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Unable to load admin profile.' });
   }
 };
 

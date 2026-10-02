@@ -27,10 +27,19 @@ export default function Auth() {
     navigate(redirect || (data.user?.role === 'admin' ? '/admin' : '/dashboard'));
   };
 
-  // Show success message after registration redirect
+  // Show success or session expiration message
   useEffect(() => {
     if (location.state?.message) setMessage(location.state.message);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('expired') === '1') {
+      setMessage('Your administrator session has expired. Please sign in again.');
+    }
   }, [location.state]);
+
+  const fillAdmin = () => {
+    setEmail('admin@example.com');
+    setPassword('Admin@12345');
+  };
 
   // Google Sign-In SDK loader
   useEffect(() => {
@@ -178,6 +187,21 @@ export default function Auth() {
             <span className="absolute bg-white px-3 text-xs font-semibold uppercase text-slate-400">
               Or email &amp; password
             </span>
+          </div>
+
+          {/* Quick Admin Fill Helper */}
+          <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/80 p-3 text-xs text-indigo-950 flex items-center justify-between">
+            <div>
+              <span className="font-bold text-indigo-900 block">Administrator Login</span>
+              <span className="text-slate-600">admin@example.com</span>
+            </div>
+            <button
+              type="button"
+              onClick={fillAdmin}
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white shadow-sm hover:bg-indigo-700 transition"
+            >
+              Fill Admin
+            </button>
           </div>
 
           {/* Email + Password form */}

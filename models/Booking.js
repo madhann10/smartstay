@@ -148,7 +148,6 @@ const bookingSchema = new mongoose.Schema(
 
 // Indexes for common query patterns
 bookingSchema.index({ user: 1, createdAt: -1 });
-bookingSchema.index({ bookingId: 1 });
 bookingSchema.index({ hotel: 1 });
 
 const Booking = mongoose.model('Booking', bookingSchema);

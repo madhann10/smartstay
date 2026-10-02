@@ -11,7 +11,8 @@
     "server": "node ./node_modules/nodemon/bin/nodemon.js server.js",
     "seed:admin": "node scripts/seedAdmin.js",
     "seed:hotels": "node scripts/seedHotels.js",
-    "reset:auth": "node scripts/resetAuth.js"
+    "reset:auth": "node scripts/resetAuth.js",
+    "test:e2e": "node scripts/verifyAdminE2E.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
